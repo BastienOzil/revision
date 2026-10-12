@@ -1,0 +1,5 @@
+to test:
+
+-Compile and run mini_serv.c with a localhost like 8080 or else.
+
+-In 2 or more terminal use nc localhost 8080 to see clients actions and number.

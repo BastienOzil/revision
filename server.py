@@ -1,7 +1,7 @@
 import socket
 
 host = 'localhost'
-port = 9990
+port = 8081
 address = (host, port)
 
 server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
