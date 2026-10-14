@@ -5,6 +5,7 @@
 #include <netinet/ip.h>
 
 int		count = 0, max_fd = 0;
+// max d un envoie en bytes 65536
 int		ids[65536];
 char	*msgs[65536];
 
@@ -63,13 +64,14 @@ char *str_join(char *buf, char *add)
 
 // END COPY-PASTE
 
-
+// retour d erreur
 void	fatal_error()
 {
 	write(2, "Fatal error\n", 12);
 	exit(1);
 }
 
+// creation d'un message entre client
 void	notify_other(int author, char *str)
 {
 	for (int fd = 0; fd <= max_fd; fd++)
@@ -79,6 +81,7 @@ void	notify_other(int author, char *str)
 	}
 }
 
+// creation d'un client
 void	register_client(int fd)
 {
 	max_fd = fd > max_fd ? fd : max_fd;
@@ -89,6 +92,7 @@ void	register_client(int fd)
 	notify_other(fd, buf_write);
 }
 
+// supression du client
 void	remove_client(int fd)
 {
 	sprintf(buf_write, "server: client %d just left\n", ids[fd]);
@@ -98,6 +102,7 @@ void	remove_client(int fd)
 	close(fd);
 }
 
+// envoie d'un message
 void	send_msg(int fd)
 {
 	char *msg;
@@ -110,6 +115,8 @@ void	send_msg(int fd)
 		free(msg);
 	}
 }
+
+// determine le num de client
 
 int		create_socket()
 {
