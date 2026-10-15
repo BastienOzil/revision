@@ -3,22 +3,20 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <netinet/ip.h>
+#include <poll.h>
 
-int		count = 0, max_fd = 0;
-// max d un envoie en bytes 65536
-int		ids[65536];
-char	*msgs[65536];
-
-fd_set	rfds, wfds, afds;
-char	buf_read[1001], buf_write[42];
-
+int count = 0, max_fd = 0;
+int ids[65536];
+char *msgs[65536];
+struct pollfd poll_fds[65536];
+char buf_read[1001], buf_write[42];
 
 // START COPY-PASTE FROM GIVEN MAIN
 
 int extract_message(char **buf, char **msg)
 {
-	char	*newbuf;
-	int	i;
+	char *newbuf;
+	int i;
 
 	*msg = 0;
 	if (*buf == 0)
@@ -44,8 +42,8 @@ int extract_message(char **buf, char **msg)
 
 char *str_join(char *buf, char *add)
 {
-	char	*newbuf;
-	int		len;
+	char *newbuf;
+	int len;
 
 	if (buf == 0)
 		len = 0;
@@ -64,46 +62,43 @@ char *str_join(char *buf, char *add)
 
 // END COPY-PASTE
 
-// retour d erreur
-void	fatal_error()
+void fatal_error(void)
 {
 	write(2, "Fatal error\n", 12);
 	exit(1);
 }
 
-// creation d'un message entre client
-void	notify_other(int author, char *str)
+void notify_other(int author, char *str)
 {
+	int len = strlen(str);
+
 	for (int fd = 0; fd <= max_fd; fd++)
-	{
-		if (FD_ISSET(fd, &wfds) && fd != author)
-			send(fd, str, strlen(str), 0);
-	}
+		if (poll_fds[fd].fd >= 0 && fd != author)
+			send(fd, str, len, 0);
 }
 
-// creation d'un client
-void	register_client(int fd)
+void register_client(int fd)
 {
 	max_fd = fd > max_fd ? fd : max_fd;
 	ids[fd] = count++;
 	msgs[fd] = NULL;
-	FD_SET(fd, &afds);
+	poll_fds[fd].fd = fd;
+	poll_fds[fd].events = POLLIN;
 	sprintf(buf_write, "server: client %d just arrived\n", ids[fd]);
 	notify_other(fd, buf_write);
 }
 
-// supression du client
-void	remove_client(int fd)
+void remove_client(int fd)
 {
 	sprintf(buf_write, "server: client %d just left\n", ids[fd]);
 	notify_other(fd, buf_write);
 	free(msgs[fd]);
-	FD_CLR(fd, &afds);
 	close(fd);
+	poll_fds[fd].fd = -1;
+	poll_fds[fd].events = 0;
 }
 
-// envoie d'un message
-void	send_msg(int fd)
+void send_msg(int fd)
 {
 	char *msg;
 
@@ -116,18 +111,19 @@ void	send_msg(int fd)
 	}
 }
 
-// determine le num de client
-
-int		create_socket()
+int create_socket(void)
 {
-	max_fd = socket(AF_INET, SOCK_STREAM, 0);
-	if (max_fd < 0)
+	int fd = socket(AF_INET, SOCK_STREAM, 0);
+
+	if (fd < 0)
 		fatal_error();
-	FD_SET(max_fd, &afds);
-	return max_fd;
+	max_fd = fd;
+	poll_fds[fd].fd = fd;
+	poll_fds[fd].events = POLLIN;
+	return (fd);
 }
 
-int		main(int ac, char **av)
+int main(int ac, char **av)
 {
 	if (ac != 2)
 	{
@@ -135,46 +131,38 @@ int		main(int ac, char **av)
 		exit(1);
 	}
 
-	FD_ZERO(&afds);
-	int sockfd = create_socket();
-
-	// START COPY-PASTE FROM MAIN
-
+	int sockfd;
 	struct sockaddr_in servaddr;
-	bzero(&servaddr, sizeof(servaddr));
 
+	for (int i = 0; i < 65536; i++)
+		poll_fds[i].fd = -1;
+
+	sockfd = create_socket();
+	bzero(&servaddr, sizeof(servaddr));
 	servaddr.sin_family = AF_INET;
 	servaddr.sin_addr.s_addr = htonl(2130706433);
-	servaddr.sin_port = htons(atoi(av[1])); // replace 8080
+	servaddr.sin_port = htons(atoi(av[1]));
 
 	if (bind(sockfd, (const struct sockaddr *)&servaddr, sizeof(servaddr)))
 		fatal_error();
-	if (listen(sockfd, SOMAXCONN)) // the main uses 10, SOMAXCONN is 180 on my machine
-		fatal_error();
 
-	// END COPY-PASTE
+	if (listen(sockfd, SOMAXCONN))
+		fatal_error();
 
 	while (1)
 	{
-		rfds = wfds = afds;
-
-		if (select(max_fd + 1, &rfds, &wfds, NULL, NULL) < 0)
+		if (poll(poll_fds, max_fd + 1, -1) < 0)
 			fatal_error();
-
 		for (int fd = 0; fd <= max_fd; fd++)
 		{
-			if (!FD_ISSET(fd, &rfds))
+			if (poll_fds[fd].fd < 0 || !(poll_fds[fd].revents & POLLIN))
 				continue;
-
 			if (fd == sockfd)
 			{
 				socklen_t addr_len = sizeof(servaddr);
 				int client_fd = accept(sockfd, (struct sockaddr *)&servaddr, &addr_len);
 				if (client_fd >= 0)
-				{
 					register_client(client_fd);
-					break ;
-				}
 			}
 			else
 			{
@@ -182,7 +170,7 @@ int		main(int ac, char **av)
 				if (read_bytes <= 0)
 				{
 					remove_client(fd);
-					break ;
+					continue;
 				}
 				buf_read[read_bytes] = '\0';
 				msgs[fd] = str_join(msgs[fd], buf_read);
@@ -190,5 +178,5 @@ int		main(int ac, char **av)
 			}
 		}
 	}
-	return 0;
+	return (0);
 }
