@@ -70,7 +70,7 @@ void ft_talk(int author, char *str)
 
 	for (int fd = 0; fd <= max_fd; fd++)
 		if (poll_fds[fd].fd >= 0 && fd != author)
-			send(fd, str, len, 0);
+			send(fd, str, len, MSG_NOSIGNAL);
 }
 
 void new_client(int fd)
